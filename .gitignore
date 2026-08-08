@@ -1,0 +1,116 @@
+# --- Data, PHI, outputs, credentials — never commit ---
+# Datasets, images, annotations
+data/
+images/
+raw/
+annotations/
+*.dcm
+*.nii
+*.nii.gz
+
+# Any file ending with these image extensions at the top level or in results dirs
+# (samples/ is whitelisted below because it holds only synthetic no-PHI data)
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tif
+*.tiff
+*.gif
+*.webp
+*.heic
+*.heif
+
+# Pipeline outputs
+results/
+outputs/
+runs/
+private-results/
+audit_output/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-journal
+
+# Reviewer state
+reviewer_state/
+reviewer_1.csv
+reviewer_2.csv
+adjudicated_labels.csv
+
+# Model weights / caches
+models/
+weights/
+*.safetensors
+*.gguf
+*.bin
+.cache/
+.huggingface/
+
+# Config with real paths
+config.yaml
+config.local.yaml
+.env
+.env.local
+
+# Manuscripts / claim files (may reference PHI paths)
+manuscript/
+manuscripts/
+
+# --- Standard Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Generated LaTeX artefacts (numbers.tex + per-run tables/figures) ---
+# The paper template `paper/main.tex` and `paper/refs.bib` ARE tracked; the
+# per-run generated bits are not.
+paper/numbers.tex
+paper/tables/
+paper/figures/
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/*.pdf
+paper/*.synctex.gz
+paper/*.fls
+paper/*.fdb_latexmk
+
+# --- Whitelist synthetic samples (no PHI, generator produces them) ---
+!samples/
+!samples/**

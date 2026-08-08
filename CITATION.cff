@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+title: "dermlat-audit: Independent Audit Pipeline for DermLatBench"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - given-names: "dermlat-audit"
+    family-names: "contributors"
+repository-code: "https://github.com/CHANGE_ME/dermlat-audit"
+abstract: >
+  Local, reproducible batch auditing pipeline for the DermLatBench dermatology
+  laterality dataset. Runs entirely on-device on Apple Silicon; makes no cloud
+  or paid AI calls during batch inference.
+keywords:
+  - dermatology
+  - laterality
+  - dataset audit
+  - reproducibility
+  - vision-language model
+  - Apple Silicon
+license: MIT
+version: "0.1.0"

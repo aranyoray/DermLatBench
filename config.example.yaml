@@ -1,0 +1,83 @@
+# Copy to config.yaml (gitignored) or pass via --config <path>.
+# CLI flags always override values here.
+
+paths:
+  # Root directory that will be recursively scanned for images.
+  images_dir: /absolute/path/to/DermLatBench/images
+  # Optional CSV/JSON of supplied annotations. Columns/keys are auto-detected;
+  # see docs/ANNOTATION_GUIDELINES.md for the schema this pipeline understands.
+  annotations: /absolute/path/to/annotations.csv
+  # Optional path to a manuscript directory whose claims should be verified.
+  manuscript_dir: null
+  # All outputs land here (created if missing). Never commit this dir.
+  output_dir: /absolute/path/to/private-results
+
+# Which local backend to use for blinded inference.
+# Options: mlx | ollama | mock
+# The "mock" backend is deterministic and used only for tests / smoke.
+backend: mlx
+
+# Backend-specific settings. Ignored when backend != <name>.
+mlx:
+  # Any Hugging Face MLX-VLM model repo. 2B/4-bit is a good default for 16GB M2.
+  model: mlx-community/Qwen2-VL-2B-Instruct-4bit
+  max_new_tokens: 512
+  temperature: 0.0
+
+ollama:
+  host: http://127.0.0.1:11434
+  model: qwen2-vl:7b
+  request_timeout_seconds: 90
+
+# Perceptual-hash near-duplicate detection.
+dedup:
+  # bits per phash — 64 (8x8) is enough for a first-pass bucket.
+  phash_bits: 64
+  # Hamming distance threshold within a bucket to call two images near-duplicates.
+  near_duplicate_threshold: 6
+  # Number of bucket prefix bits (higher = more, smaller buckets = faster).
+  bucket_prefix_bits: 16
+
+# Blinded inference + reliability.
+inference:
+  # How many worker processes. 1 is safest on unified-memory Macs; auto uses RAM/8.
+  workers: auto
+  # Images processed per DB transaction.
+  batch_size: auto
+  # Trigger a second, independent blinded pass when confidence < this.
+  low_confidence_threshold: 60
+  # Retry a model call this many times if JSON is malformed / schema-invalid.
+  max_json_retries: 3
+  # Hard cap on wall time per single-image call (seconds).
+  per_image_timeout_seconds: 45
+
+# Leakage-safe splits.
+splits:
+  train: 0.70
+  val: 0.15
+  test: 0.15
+  random_seed: 20260808
+
+# Statistical analysis
+stats:
+  # Bootstrap resamples for clustered 95% CIs.
+  bootstrap_iterations: 2000
+  # Random seed for bootstrap.
+  bootstrap_seed: 20260808
+
+# Reviewer UI
+review:
+  port: 8765
+  # Show only rows with review_required=True by default.
+  show_only_flagged: true
+  # Blind Reviewer 2 to Reviewer 1's decision until adjudication.
+  blind_reviewer_2: true
+
+# Claims to independently verify.
+# Set to null to skip. Change values to whatever the manuscript claims.
+claims:
+  total_images: 12541
+  answerable: 9770
+  unanswerable: 2771
+  # 0.95 means "> 95%". Comparison is on independently-computed reviewer agreement.
+  min_annotation_agreement: 0.95
