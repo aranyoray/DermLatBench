@@ -24,6 +24,43 @@ _FRAME_POSITION_TERMS = (
     "left half of the image",
     "right half of the image",
 )
+# Catches frame-position reasoning regardless of articles/wording, e.g.
+# "left side of image", "on the right of the frame", "thumb is on the left side image".
+# Any mention that ties a side word to the picture within a short span.
+_FRAME_RE = re.compile(
+    r"\b(left|right)\b[^.]{0,30}?\b(image|frame|photo|photograph|picture|pic|shot)\b",
+    re.IGNORECASE,
+)
+
+
+def has_frame_position_evidence(evidence: str | None) -> bool:
+    """True if the evidence justifies a side using image/frame position (invalid per rule #4)."""
+    e = (evidence or "").strip().lower()
+    if not e:
+        return False
+    return bool(_FRAME_RE.search(e)) or any(t in e for t in _FRAME_POSITION_TERMS)
+
+
+def guard_frame_position(obj: dict[str, Any]) -> bool:
+    """Deterministic safety net for the frame-position bias.
+
+    If a LEFT/RIGHT verdict rests on image/frame position (which cannot establish the
+    PATIENT's laterality), coerce it to UNANSWERABLE. Returns True if it coerced.
+    """
+    lat = obj.get("laterality")
+    if lat not in ("LEFT", "RIGHT"):
+        return False
+    if not has_frame_position_evidence(obj.get("visible_evidence")):
+        return False
+    reason = "coerced to UNANSWERABLE: verdict relied on image/frame position, not patient anatomy"
+    prior = (obj.get("ambiguity_reason") or "").strip()
+    obj["laterality"] = "UNANSWERABLE"
+    obj["answerable"] = False
+    obj["confidence"] = 0
+    obj["review_required"] = True
+    obj["possible_label_error"] = True
+    obj["ambiguity_reason"] = f"{prior + '; ' if prior else ''}{reason}"
+    return True
 
 
 def extract_json(text: str) -> dict[str, Any]:

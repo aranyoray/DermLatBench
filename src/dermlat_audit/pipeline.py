@@ -45,7 +45,7 @@ from .hashing import phash_hex
 from .inference import Backend, InferenceError, make_backend
 from .manifest import discover_images
 from .prompts import prompt_hash, prompt_text
-from .schema import compute_flags, extract_json, validate_response
+from .schema import compute_flags, extract_json, guard_frame_position, validate_response
 from .utils import (
     auto_batch,
     auto_workers,
@@ -237,6 +237,9 @@ def _persist_prediction(
         parsed = extract_json(raw_text)
         validate_response(parsed)
         valid = True
+        # Deterministic safety net: a LEFT/RIGHT verdict justified by image/frame
+        # position (not patient anatomy) is coerced to UNANSWERABLE before flagging.
+        guard_frame_position(parsed)
         flags = compute_flags(parsed, cfg.inference.low_confidence_threshold)
     except (ValueError, jsonschema.ValidationError) as exc:
         flags = [ReviewFlag.INVALID_JSON.value]

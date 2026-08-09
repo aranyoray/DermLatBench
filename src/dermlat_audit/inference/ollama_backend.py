@@ -58,7 +58,7 @@ class OllamaBackend(Backend):
             "images": [base64.b64encode(b).decode("ascii")],
             "stream": False,
             "format": "json",
-            "options": {"temperature": 0.0},
+            "options": {"temperature": 0.0, "num_predict": 384},
         }
         t0 = time.perf_counter()
         try:
