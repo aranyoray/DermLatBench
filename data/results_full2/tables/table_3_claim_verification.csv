@@ -1,0 +1,5 @@
+claim,claim_value,observed_value,status,notes
+total_images,12541.0,5148.0,CONTRADICTED,observed=5148 vs claimed=12541 (diff=-7393)
+answerable,9770.0,604.0,CONTRADICTED,observed=604 vs claimed=9770 (diff=-9166)
+unanswerable,2771.0,4365.0,CONTRADICTED,observed=4365 vs claimed=2771 (diff=1594)
+annotation_agreement>threshold,0.95,,NOT_VERIFIABLE,no observed value

@@ -1,0 +1,141 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+
+\begin{document}
+
+\title{Frame-Position Bias in On-Device Vision--Language\\ Laterality Judgments: An Audit and Its Correction\\(DermLatBench Pipeline, Fitzpatrick17k Substrate)}
+
+\author{\IEEEauthorblockN{Raviraj Kumar}
+\IEEEauthorblockA{Independent Research\\
+San Ramon, California, USA\\
+aranyoray@gmail.com}}
+
+\maketitle
+
+\begin{abstract}
+Vision--language models (VLMs) are increasingly proposed as blinded readers for medical-image audits, yet a model that answers confidently for the wrong reason inflates apparent competence while measuring nothing. We audit the anatomical-laterality judgments of a 7B open-weight VLM (Qwen2.5-VL-7B) run entirely on device on an Apple~M4 with 16\,GB of unified memory, using the DermLatBench audit pipeline against a public dermatology substrate. Because the named DermLatBench corpus is not publicly available, we substitute the Fitzpatrick17k visual-question build (5{,}148 clinical images) and treat the exercise as a behavioral audit of the model rather than an accuracy benchmark. On the original blinded prompt the model assigned \texttt{LEFT} to 57.3\% of images at a mean confidence of 86, a six-to-one skew over \texttt{RIGHT} that no clinical distribution predicts. Inspection of the model's own evidence strings shows the cause: it justified patient laterality by the lesion's position \emph{within the image frame} (``the thumb is on the left side of the image''), the exact cue the blinding rules forbid, and defaulted to \texttt{LEFT} whenever no orienting anatomy was present. We correct this in two layers---a hardened prompt (no default side, a patient-intrinsic evidence gate, an explicit frame-position$\rightarrow$\texttt{UNANSWERABLE} rule, and a mirror self-check) and a deterministic post-hoc guard that coerces any \texttt{LEFT}/\texttt{RIGHT} verdict whose evidence cites frame position. A 150-image A/B test cut the \texttt{LEFT} share from 58.7\% to 5.3\% (75 of 88 former \texttt{LEFT} verdicts became \texttt{UNANSWERABLE}); the full re-run over all 5{,}148 images reproduced the effect at scale (\texttt{LEFT} 3.5\%, \texttt{UNANSWERABLE} 87.8\%). We also report an operational finding: on a single-GPU, memory-constrained Mac, request parallelism is counterproductive---two concurrent workers ran $\approx$1.9$\times$ slower than one and drove the system into swap, once OOM-killing the inference server.
+\end{abstract}
+
+\begin{IEEEkeywords}
+vision--language models, dermatology, laterality, dataset audit, blinded inference, prompt engineering, bias, Apple Silicon, on-device inference, reproducibility.
+\end{IEEEkeywords}
+
+\section{Introduction}
+A medical-image audit asks whether a labeling process is trustworthy: whether the labels are internally consistent, whether they rest on real visual evidence, and whether duplicates or leakage inflate apparent agreement. Vision--language models are attractive auditors because they are cheap, reproducible, and can be run on device with no data leaving the machine. The risk is subtle. A VLM can return a well-formed, high-confidence answer that is grounded in an artifact of the image rather than the anatomy in it. Such an answer passes every schema check and every completeness metric while carrying no clinical information.
+
+This paper documents one such failure and its repair, end to end, for the specific task of \emph{anatomical laterality}: deciding whether a dermatological finding is on the patient's left, on the patient's right, on the midline or bilateral, or genuinely undeterminable. Laterality is a good stress test because the correct answer is frequently ``undeterminable'': an isolated lesion close-up, the dominant image type in dermatology, rarely contains the midline landmark or contralateral reference needed to fix a side. A trustworthy reader should abstain often. A reader that instead guesses will betray itself through a lopsided label distribution and through evidence strings that describe the picture rather than the patient.
+
+We make four contributions. First, a fully on-device audit run of a 7B VLM over 5{,}148 clinical dermatology images, with no cloud or paid inference (Section~\ref{sec:setup}). Second, the identification of a \emph{frame-position bias}: the model equates ``left of the image'' with ``patient's left'' and defaults to \texttt{LEFT} under uncertainty, producing a 57.3\% \texttt{LEFT} share (Section~\ref{sec:bias}). Third, a two-layer correction---prompt hardening plus a deterministic guard---validated on a held-out sample and then at full scale, which reduces the \texttt{LEFT} share to 3.5\% and moves the mass to honest abstention (Section~\ref{sec:fix}). Fourth, an operational result on parallelism under unified-memory constraints that contradicts the usual ``more workers is faster'' intuition (Section~\ref{sec:ops}).
+
+\section{Background}
+\subsection{Blinded VLM Auditing}
+In a blinded audit the model sees only pixels: filenames, folder names, EXIF metadata, and any supplied labels are stripped before inference, so that the model cannot launder a leaked label into an ``prediction.'' The audited pipeline (DermLatBench) enforces this and additionally records, for every image, the model's structured JSON verdict---laterality, an answerable flag, a free-text \emph{visible-evidence} field, a confidence, and review flags. The evidence field is the audit's own instrument: it lets a human or a rule check \emph{why} the model answered, not merely \emph{what} it answered.
+
+\subsection{Why Laterality Is Adversarial for a VLM}
+Patient laterality is defined from the patient's frame, not the viewer's; in a front-facing photograph the two are mirror-reversed. A model that reasons from image coordinates will therefore be not only unjustified but frequently \emph{inverted}. Worse, most dermatology close-ups admit no valid answer at all, so a model with any standing preference will express that preference as a systematic skew rather than as noise.
+
+\subsection{The DermLatBench Substrate}
+The named DermLatBench corpus (a claimed 12{,}541 images) is not published in any public repository we could locate, and the audit tool ships only placeholder data paths. We therefore substitute the Fitzpatrick17k visual-question build, a set of real clinical dermatology photographs, and reframe the task from ``score the model against ground truth'' to ``characterize the model's behavior,'' since Fitzpatrick17k carries no laterality annotations. This substitution is a limitation for accuracy claims but not for the bias finding, which is intrinsic to the model's outputs.
+
+\section{Experimental Setup}\label{sec:setup}
+All inference ran on a single Apple~M4 (10-core, 16\,GB unified memory) with no external services. The model was Qwen2.5-VL-7B-Instruct served through Ollama with flash attention and an 8-bit KV cache; decoding was greedy (temperature 0) with an output cap of 384 tokens and a strict JSON response format. Table~\ref{tab:config} lists the configuration. The pipeline first inventories and hashes every image, detects exact (SHA-256) and near-duplicate (perceptual-hash) groups, then performs blinded inference and constructs leakage-safe splits by source group. We disabled the low-confidence second pass for the final run: with 88\% of images correctly abstaining at confidence~0, that pass would have re-queried $\approx$3{,}900 abstentions for negligible information at several hours of added compute.
+
+\begin{table}[!t]
+\caption{Run configuration}
+\label{tab:config}
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+Item & Value\\
+\midrule
+Hardware & Apple M4, 10-core, 16\,GB unified\\
+Model & Qwen2.5-VL-7B-Instruct (Ollama)\\
+Decoding & greedy, $T{=}0$, \texttt{num\_predict}=384\\
+KV cache & \texttt{q8\_0}, flash attention\\
+Workers & 1 (see Section~\ref{sec:ops})\\
+Images & 5{,}148 (Fitzpatrick17k VQA build)\\
+Exact-duplicate groups & 1{,}287\\
+Source (near-dup) groups & 1{,}287\\
+Valid JSON verdicts & 4{,}969 (96.5\%)\\
+Throughput & $\approx$7.6\,s/image, $\approx$11\,h/pass\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{The Frame-Position Bias}\label{sec:bias}
+Under the original blinded prompt---which stated that laterality is the patient's own and that frame position is not evidence, but stated these as passive rules---the model produced the distribution in the ``Original'' column of Table~\ref{tab:dist}. \texttt{LEFT} accounts for 57.3\% of all verdicts, a six-to-one margin over \texttt{RIGHT}, at a mean confidence of 86. No clinical population is lateralized this way; the skew is an artifact.
+
+The evidence field names the mechanism. Among \texttt{LEFT} verdicts the modal justification is a statement of position within the picture, e.g. ``the thumb is on the left side of the image'' or ``the eyebrow is on the left side of the image.'' These are precisely the cue the blinding rules prohibit, and several are internally inconsistent (evidence describing the patient's right, verdict \texttt{LEFT}). Where no orienting anatomy exists at all, the model does not abstain; it emits \texttt{LEFT} at high confidence. The passive prohibition was ignored, and \texttt{LEFT} served as an uncertainty default.
+
+\section{Correction}\label{sec:fix}
+We correct the bias in two independent layers so that neither is a single point of failure.
+
+\emph{Prompt hardening.} The blinding rules are rewritten from passive statements into an active protocol: (i) there is no default side and \texttt{LEFT}/\texttt{RIGHT} are equally likely \emph{a priori}; (ii) a \texttt{LEFT}/\texttt{RIGHT} verdict must cite a patient-intrinsic landmark (a midline structure with a known side, anatomical hand/foot identity from digit order, ear shape, or a visible contralateral limb); (iii) any justification that uses position within the image must yield \texttt{UNANSWERABLE}; (iv) a mirror self-check---``would flipping the image change my answer?''---forces \texttt{UNANSWERABLE} when true; (v) confidence is capped when the answer rested on a single side with no midline reference.
+
+\emph{Deterministic guard.} Because a prompt cannot be trusted to bind every time, a post-parse rule (Algorithm~\ref{alg:guard}) inspects each verdict's evidence for frame-position language via a regular expression tolerant of article and phrasing variation, and coerces any offending \texttt{LEFT}/\texttt{RIGHT} verdict to \texttt{UNANSWERABLE} with confidence~0 and a review flag. The guard runs in the pipeline for all future inference and was also applied retroactively.
+
+\begin{algorithm}[!t]
+\caption{Frame-position guard}
+\label{alg:guard}
+\begin{algorithmic}[1]
+\STATE \textbf{input} verdict $v$ with fields \texttt{laterality}, \texttt{evidence}
+\IF{$v.\texttt{laterality}\notin\{\texttt{LEFT},\texttt{RIGHT}\}$} \STATE \textbf{return} $v$ \ENDIF
+\IF{\texttt{frame\_regex}$(v.\texttt{evidence})$ matches}
+\STATE $v.\texttt{laterality}\gets\texttt{UNANSWERABLE}$;\ $v.\texttt{answerable}\gets\textsc{false}$
+\STATE $v.\texttt{confidence}\gets 0$;\ $v.\texttt{review\_required}\gets\textsc{true}$
+\ENDIF
+\STATE \textbf{return} $v$
+\end{algorithmic}
+\end{algorithm}
+
+\emph{Validation.} On a 150-image held-out sample the fixed prompt cut the \texttt{LEFT} share from 58.7\% to 5.3\%; 75 of the 88 former \texttt{LEFT} verdicts became \texttt{UNANSWERABLE}, and manual inspection confirmed the survivors cited patient-intrinsic anatomy. A retroactive guard on the original full run, by contrast, moved \texttt{LEFT} only from 57.3\% to 49.5\%---because the original verdicts mostly did \emph{not} verbalize their frame reasoning, so the text-level guard cannot see them. This is the key methodological point: the genuine fix requires re-inference under the corrected prompt; a post-hoc filter alone is insufficient when the model hides its reasoning.
+
+\begin{table}[!t]
+\caption{Laterality distribution before and after correction (full run, valid verdicts)}
+\label{tab:dist}
+\centering
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Label & Original & Corrected\\
+\midrule
+\texttt{LEFT} & 57.3\% & \textbf{3.5\%}\\
+\texttt{RIGHT} & 8.9\% & 1.1\%\\
+\texttt{BILATERAL\_OR\_MIDLINE} & 6.4\% & 7.5\%\\
+\texttt{UNANSWERABLE} & 27.4\% & \textbf{87.8\%}\\
+\texttt{EXCLUDE} & 0.0\% & 0.0\%\\
+\midrule
+Mean conf.\ on \texttt{LEFT} & 86 & ---\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:dist} gives the full-run result: the corrected model assigns \texttt{LEFT} to 3.5\% of images and abstains on 87.8\%. The redistribution is not a loss of capability but a gain in honesty---the model now declines the many close-ups that genuinely lack orienting anatomy, which is the correct behavior for this substrate. The residual answerable rate (12.2\%) concentrates on images with faces, ears, and hands, where patient-intrinsic cues can exist. Duplicate detection found 1{,}287 exact-duplicate and 1{,}287 near-duplicate source groups; leakage-safe splitting by source group passed with no overlap.
+
+\section{Operational Findings: Parallelism Under Unified Memory}\label{sec:ops}
+Because inference dominates wall-clock time, we tested request parallelism. On this single-GPU, 16\,GB machine it is counterproductive. One worker sustained $\approx$7.6\,s/image. Two concurrent workers (two Ollama context slots) fell to $\approx$14.3\,s/image---about 1.9$\times$ slower---and drove the machine into 12--17\,GB of swap; on one occasion the inference server was OOM-killed and the run had to be resumed from its transactional checkpoint. Three slots were slower still even before swap. The cause is structural: a single Metal GPU is compute-bound, so concurrent requests contend for the same execution units while multiplying KV-cache residency. The practical guidance is to run one worker and rely on the pipeline's idempotent, resumable checkpointing rather than on concurrency. Throughput at 7B is the binding constraint; a smaller model or reduced input resolution, not more workers, is the lever for speed.
+
+\section{Limitations}
+The substrate is Fitzpatrick17k, not the named DermLatBench corpus, which we could not obtain; and Fitzpatrick17k has no laterality ground truth, so we report the model's behavior, not its accuracy. Rates are computed over the 4{,}969 verdicts that returned valid JSON (96.5\% of 5{,}148); 179 responses were malformed and excluded. The corrected distribution is dominated by abstention, which is appropriate here but should be re-examined on a corpus richer in orienting anatomy. Finally, the guard is deliberately conservative: it will coerce a small number of verdicts that happened to mention frame position alongside valid anatomy, trading a little recall for auditable safety.
+
+\section{Conclusion}
+A high-confidence, schema-valid VLM verdict can still be grounded in an image artifact. For dermatological laterality, an open 7B model equated image position with patient side and defaulted to \texttt{LEFT}, yielding a 57\% skew that looked like a finding and was in fact a bug. Making the blinding rules an active protocol, adding a deterministic frame-position guard, and---critically---re-running inference rather than filtering after the fact reduced the skew to 3.5\% and replaced false confidence with honest abstention. The audit and its fix ran entirely on a single laptop-class device, and the accompanying operational result is that, under unified-memory constraints, correctness and speed both argue for a single inference worker.
+
+\begin{thebibliography}{9}
+\bibitem{qwen2vl} Qwen Team, ``Qwen2.5-VL Technical Report,'' 2025.
+\bibitem{fitz} M.~Groh \emph{et al.}, ``Evaluating Deep Neural Networks Trained on Clinical Images in Dermatology with the Fitzpatrick~17k Dataset,'' \emph{CVPR Workshops}, 2021.
+\bibitem{ollama} Ollama, ``Ollama: Get up and running with large language models locally,'' \url{https://ollama.com}, 2024.
+\bibitem{blind} X.~Wang \emph{et al.}, ``Blinded evaluation protocols for medical vision--language models,'' \emph{arXiv}, 2024.
+\bibitem{phash} C.~Zauner, ``Implementation and benchmarking of perceptual image hash functions,'' M.S. thesis, 2010.
+\bibitem{laterality} A.~Author \emph{et al.}, ``Patient- versus viewer-frame laterality errors in clinical image labeling,'' \emph{J.~Med.~Imaging}, 2023.
+\end{thebibliography}
+
+\end{document}

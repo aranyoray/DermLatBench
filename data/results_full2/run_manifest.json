@@ -1,0 +1,98 @@
+{
+  "run_id": "bbefc6067d20",
+  "started_at": "2026-08-09T20:06:36+00:00",
+  "finished_at": "2026-08-09T21:14:42+00:00",
+  "dermlat_audit_version": "0.1.0",
+  "pipeline_version": "1.0.0",
+  "backend_name": "ollama",
+  "backend_model": "qwen2.5vl:7b",
+  "backend_version": "ollama=unknown",
+  "prompt_hash": "89365fb499426fbd3a9bc35ba1cc7201d0bd266d848c5890c5eab5cee0ab5a67",
+  "hardware": {
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "python": "3.12.13",
+    "cpu_count": 10,
+    "logical_cpus": 10,
+    "ram_gb": 16.0,
+    "arch": "arm64",
+    "is_apple_silicon": true,
+    "apple_chip": "Apple M4"
+  },
+  "config": {
+    "paths": {
+      "images_dir": "/Users/raviraj/dermlat_data/images",
+      "annotations": null,
+      "manuscript_dir": null,
+      "output_dir": "/Users/raviraj/dermlat_data/results_full2"
+    },
+    "backend": "ollama",
+    "mlx": {
+      "model": "mlx-community/Qwen2-VL-2B-Instruct-4bit",
+      "max_new_tokens": 512,
+      "temperature": 0.0
+    },
+    "ollama": {
+      "host": "http://127.0.0.1:11434",
+      "model": "qwen2.5vl:7b",
+      "request_timeout_seconds": 120
+    },
+    "dedup": {
+      "phash_bits": 64,
+      "near_duplicate_threshold": 6,
+      "bucket_prefix_bits": 16
+    },
+    "inference": {
+      "workers": 1,
+      "batch_size": "auto",
+      "low_confidence_threshold": 60,
+      "max_json_retries": 3,
+      "per_image_timeout_seconds": 90
+    },
+    "splits": {
+      "train": 0.7,
+      "val": 0.15,
+      "test": 0.15,
+      "random_seed": 20260808
+    },
+    "stats": {
+      "bootstrap_iterations": 2000,
+      "bootstrap_seed": 20260808
+    },
+    "review": {
+      "port": 8765,
+      "show_only_flagged": true,
+      "blind_reviewer_2": true
+    },
+    "claims": {
+      "total_images": 12541,
+      "answerable": 9770,
+      "unanswerable": 2771,
+      "min_annotation_agreement": 0.95
+    }
+  },
+  "preflight": {
+    "total_discovered": 5148,
+    "readable": 5148,
+    "supported": 5148,
+    "corrupt": 0,
+    "unsupported": 0,
+    "supplied_labels_loaded": 0
+  },
+  "dedup": {
+    "exact_duplicate_groups": 1287,
+    "images_in_exact_duplicate_groups": 5148,
+    "source_groups": 1287,
+    "singleton_source_groups": 0,
+    "multi_member_source_groups": 1287,
+    "computed_at": "2026-08-09T20:07:22+00:00"
+  },
+  "inference_pass_1": {
+    "pass_number": 1,
+    "processed": 472,
+    "flagged": 415,
+    "failures": 0,
+    "seconds": 4026.02,
+    "throughput_img_per_s": 0.117
+  },
+  "inference_pass_2": null
+}
